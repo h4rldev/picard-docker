@@ -1,0 +1,257 @@
+-module (picard_auth_http).
+-export ([
+  login/1, logout/1, me/1, status/1, list_users/1, create_user/1, delete_user/1, change_password/1, renew/1, change_role/1
+]).
+
+
+login(Req) ->
+  case body_json(Req) of
+    {ok,    #{<<"username">> := UN, <<"password">> := PW}} -> do_login(UN, PW);
+    {ok,    #{<<"username">> := _}}                        -> err(400, "No password");
+    {ok,    _}                                             -> err(400, "No username");
+    {error, _}                                             -> err(400, "Invalid JSON")
+  end.
+
+
+do_login(UN, PW) ->
+  case picard_auth:login(UN, PW) of
+    {ok,    Token}               -> session_response(Token);
+    {error, invalid_credentials} -> err(401, "Invalid credentials");
+    {error, _}                   -> err(500, "Internal login error")
+  end.
+
+
+logout(_Req) ->
+  Delete = errm_http_cookie:set_cookie(
+    <<"session">>, <<>>, 
+    #{
+      path => <<"/">>,
+      http_only => true,
+      same_site => lax,
+      secure => true,
+      max_age => 0
+    }
+  ),
+
+  Resp = {200, #{<<"content-type">> => <<"application/json">>}, <<"{\"ok\": true}">>},
+  {ok, errm_http_cookie:add_cookies(Resp, [Delete])}.
+
+
+me(Req) ->
+  case maps:get(claims, Req, undefined) of
+    undefined -> err(401, "Unauthorized");
+    Claims    -> ok_json(#{
+      <<"username">> => maps:get(<<"sub">>, Claims),
+      <<"role">> => maps:get(<<"role">>, Claims)
+    })
+  end.
+
+
+status(_Req) -> ok_json(#{<<"enabled">> => picard_auth:enabled()}).
+
+
+list_users(Req) ->
+  case require_role(Req, "admin") of
+    ok            -> users_result(errm_sqlite:query(picard_db:db(), "SELECT username, role FROM users ORDER BY username"));
+    {error, S, M} -> err(S, M)
+  end.
+
+
+users_result({ok, Rows}) ->
+  ok_json([#{
+    <<"username">> => list_to_binary(maps:get("username", R)),
+    <<"role">> => list_to_binary(maps:get("role", R))
+  } || R <- Rows]);
+users_result({error, Reason}) -> 
+  logger:error("Failed to list users: ~p", [Reason]),
+  err(500, "Database error").
+
+
+create_user(Req) ->
+  case require_role(Req, "admin") of
+    ok            -> create_user(Req, role_of(Req));
+    {error, S, M} -> err(S, M)
+  end.
+
+
+create_user(Req, ActingRole) ->
+  case body_json(Req) of
+    {ok, #{<<"username">> := UN, <<"password">> := PW} = Data} ->
+      Role = maps:get(<<"role">>, Data, <<"user">>),
+      case assignable(ActingRole, binary_to_list(Role)) of
+        true -> insert_user(UN, PW, Role);
+        false -> err(403, "Forbidden")
+      end;
+    {ok, _} -> err(400, "No username or password");
+    {error, _} -> err(400, "Invalid JSON")
+  end.
+
+
+delete_user(Req) ->
+  Name = binary_to_list(name_param(Req)),
+  case require_role(Req, "admin") of
+    ok            -> delete_user(Name, maps:get(account, Req, ""), role_of(Req));
+    {error, S, M} -> err(S, M)
+  end.
+
+
+delete_user(Name, Name, _) -> err(400, "You cannot delete yourself");
+delete_user(Name, _Acting, ActingRole) ->
+  case target_role(Name) of
+    undefined -> err(400, "No such user");
+    TRole ->
+      case picard_auth:can_manage(ActingRole, TRole) of
+        true  -> do_delete(Name);
+        false -> err(403, "Forbidden")
+      end
+  end.
+
+
+do_delete(Name) ->
+  {ok, _} = errm_sqlite:query(picard_db:db(), "DELETE FROM users WHERE username = $1", [list_to_binary(Name)]),
+  ok_json(#{<<"ok">> => true}).
+
+
+change_password(Req) ->
+  Name = binary_to_list(name_param(Req)),
+  case body_json(Req) of
+    {ok, #{<<"password">> := NewPW}} ->
+      case allowed_target(Req, Name) of
+        ok            -> set_password(Name, NewPW);
+        {error, S, M} -> err(S, M)
+      end;
+    {ok,    _} -> err(400, "No password");
+    {error, _} -> err(400, "Invalid JSON")
+  end.
+
+
+renew(Req) ->
+  Name = binary_to_list(name_param(Req)),
+  case allowed_target(Req, Name) of
+    ok            -> do_renew(Name);
+    {error, S, M} -> err(S, M)
+  end.
+
+
+do_renew(Name) ->
+  {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET auth_version = auth_version + 1 WHERE username = $1", [list_to_binary(Name)]),
+  ok_json(#{<<"ok">> => true}).
+
+
+change_role(Req) ->
+  Name = binary_to_list(name_param(Req)),
+  case require_role(Req, "superadmin") of
+    ok            -> change_role(Req, Name, target_role(Name));
+    {error, S, M} -> err(S, M)
+  end.
+
+change_role(_Req, _Name, undefined)  -> err(400, "No such user");
+change_role(_Req, _Name, "superadmin") -> err(400, "Super-Admin is env-managed");
+change_role(Req, Name, _) ->
+  case body_json(Req) of
+    {ok, #{<<"role">> := Role}} when Role =:= <<"user">>; Role =:= <<"admin">> ->
+      {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET role = $2 WHERE username = $1", [list_to_binary(Name), Role]),
+      ok_json(#{<<"ok">> => true});
+    {ok, _} -> err(400, "Invalid role");
+    {error, _} -> err(400, "Invalid JSON")
+  end.
+
+
+allowed_target(Req, Name) ->
+  case require_role(Req, "admin") of
+    ok -> allowed_target(Name, maps:get(account, Req, ""), role_of(Req));
+    E -> E
+  end.
+
+allowed_target(Name, Name, _) -> ok;
+allowed_target(Name, _Acting, ActingRole) ->
+  case target_role(Name) of
+    undefined -> {error, 404, "No such user"};
+    TRole ->
+      case picard_auth:can_manage(ActingRole, TRole) of
+        true  -> ok;
+        false -> {error, 403, "Forbidden"}
+      end
+  end.
+
+
+assignable(Acting, "superadmin") -> Acting =:= "superadmin" andalso not exists_superadmin();
+assignable("superadmin", _) -> true;
+assignable("admin", "user") -> true;
+assignable(_, _) -> false.
+
+
+exists_superadmin() ->
+  exists_superadmin(errm_sqlite:query(picard_db:db(), "SELECT 1 FROM users WHERE role = 'superadmin' LIMIT 1")).
+
+exists_superadmin({ok, [_]}) -> true;
+exists_superadmin(_) -> false.
+
+
+set_password(Name, NewPW) ->
+  {ok, Hash} = errm_argon:hash(binary_to_list(NewPW)),
+  {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET password_hash = $2, auth_version = auth_version + 1 WHERE username = $1", [list_to_binary(Name), Hash]),
+  ok_json(#{<<"ok">> => true}).
+
+
+insert_user(UN, PW, Role) ->
+  {ok, Hash} = errm_argon:hash(binary_to_list(PW)),
+  case errm_sqlite:query(picard_db:db(), "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)", [UN, Hash, Role]) of
+    {ok,    _} -> ok_json(#{<<"ok">> => true});
+    {error, _} -> err(400, "User already exists")
+  end.
+
+
+require_role(Req, Min) ->
+  case maps:get(claims, Req, undefined) of
+    undefined -> {error, 401, "Unauthorized"};
+    Claims -> check_role(Claims, Min)
+  end.
+
+
+check_role(Claims, Min) ->
+  Role = binary_to_list(maps:get(<<"role">>, Claims, <<"user">>)),
+  case picard_auth:rank(Role) >= picard_auth:rank(Min) of
+    true  -> ok;
+    false -> {error, 403, "Forbidden"}
+  end.
+
+
+role_of(Req) ->
+  case maps:get(claims, Req, undefined) of
+    undefined -> "user";
+    Claims -> binary_to_list(maps:get(<<"role">>, Claims, <<"user">>))
+  end.
+
+
+target_role(Name) ->
+  role_result(errm_sqlite:query(picard_db:db(), "SELECT role FROM users WHERE username = $1", [list_to_binary(Name)])).
+
+
+role_result({ok, [Row]}) -> maps:get("role", Row);
+role_result(_) -> undefined.
+
+
+name_param(Req) -> maps:get(<<"name">>, maps:get(params, Req, #{}), <<>>).
+
+
+body_json(Req) ->
+  case errm_json:decode(maps:get(body, Req, <<>>)) of
+    {ok,    Data} when is_map(Data) -> {ok,    Data};
+    _                               -> {error, invalid_json}
+  end.
+
+
+session_response(Token) ->
+  Set = errm_http_cookie:set_cookie(<<"session">>, Token, #{path => <<"/">>, http_only => true, same_site => lax, secure => true, max_age => 30 * 86400}),
+  Resp = {200, #{<<"content-type">> => <<"application/json">>}, <<"{\"ok\": true}">>},
+  {ok, errm_http_cookie:add_cookies(Resp, [Set])}.
+
+
+ok_json(Term) ->
+  {ok, {200, #{<<"content-type">> => <<"application/json">>}, errm_json:to_binary(Term)}}.
+
+
+err(Status, Message) ->
+  {ok, {Status, #{<<"content-type">> => <<"application/json">>}, errm_json:to_binary(#{<<"error">> => list_to_binary(Message)})}}.
+

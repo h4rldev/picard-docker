@@ -1,0 +1,14 @@
+-module (picard_rt_app).
+-behaviour (application).
+-export ([start/2, stop/1]).
+
+start(_StartType, _StartArgs) ->
+    logger:set_primary_config(level, info),
+    picard_config:load(),
+    picard_secrets:init(),
+    picard_db:init(),
+    picard_auth:ensure_superadmin(),
+    picard_rt_sup:start_link().
+
+stop(_State) ->
+    ok.

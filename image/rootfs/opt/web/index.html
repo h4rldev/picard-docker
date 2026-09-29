@@ -1,0 +1,60 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>MusicBrainz Picard</title>
+  <style>html,body{margin:0;height:100%;font-family:system-ui,sans-serif}
+  input,button{display:block;width:100%;padding:10px;margin:6px 0;box-sizing:border-box}
+  #login{max-width:300px;margin:15% auto;padding:20px}</style>
+</head>
+<body>
+<script>
+const start = async () => {
+  let token = null;
+  try {
+    const r = await fetch('/route');
+    const j = await r.json();
+    token = j.token;
+  } catch (e) { document.body.textContent = 'route failed'; return; }
+  const frame = document.createElement('iframe');
+  frame.src = `/novnc/vnc.html?autoconnect=true&path=/vnc/${token}&resize=remote&reconnect=true`;
+  document.body.appendChild(frame);
+  const ping = (p) => { try { fetch(p, { keepalive: true }); } catch (e) {} };
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) ping('/sleep/' + token); else ping('/alive/' + token);
+  });
+  window.addEventListener('pagehide', () => ping('/sleep/' + token));
+  setInterval(() => ping('/alive/' + token), 30000);
+};
+const showLogin = () => {
+  document.body.innerHTML = `
+    <div id="login">
+      <h2>Picard</h2>
+      <input id="u" placeholder="username" autocomplete="username">
+      <input id="p" type="password" placeholder="password" autocomplete="current-password">
+      <button id="b">Sign in</button>
+      <p id="e" style="color:red"></p>
+    </div>`;
+  document.getElementById('b').onclick = async () => {
+    const r = await fetch('/auth/login', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({username: document.getElementById('u').value,
+                            password: document.getElementById('p').value})
+    });
+    if (r.ok) location.reload();
+    else document.getElementById('e').textContent = 'Invalid credentials';
+  };
+};
+(async () => {
+  let enabled = false;
+  try { enabled = (await (await fetch('/auth/status')).json()).enabled; } catch (e) {}
+  if (!enabled) { start(); return; }
+  let authed = false;
+  try { authed = (await fetch('/auth/me')).ok; } catch (e) {}
+if (authed) start(); else showLogin();
+})();
+</script>
+</body>
+</html>

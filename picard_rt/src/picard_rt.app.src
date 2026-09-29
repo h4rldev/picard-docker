@@ -1,0 +1,10 @@
+{application, picard_rt,
+ [{description, "MusicBrainz Picard remote-desktop session node"},
+  {vsn, "0.1.0"},
+  {registered, [picard_router, picard_sessions_sup]},
+  {mod, {picard_rt_app, []}},
+  {applications, [kernel, stdlib, crypto]},
+  {env, []},
+  {modules, []},
+  {licenses, ["BSD-3-Clause"]}
+ ]}.
