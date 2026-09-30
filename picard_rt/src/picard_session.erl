@@ -1,13 +1,12 @@
 -module (picard_session).
 -behaviour (gen_server).
--export ([start_link/1, token/1, wayvnc_port/1, freeze/1, resume/1, destroy/1]).
+-export ([start_link/1, info/1, freeze/1, resume/1, destroy/1]).
 -export ([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, handle_continue/2]).
 
 start_link(Account) ->
   gen_server:start_link(?MODULE, [Account], []).
 
-token(Pid) -> gen_server:call(Pid, token).
-wayvnc_port(Pid) -> gen_server:call(Pid, wayvnc_port).
+info(Pid) -> gen_server:call(Pid, info).
 freeze(Pid) -> gen_server:call(Pid, freeze, 60000).
 resume(Pid) -> gen_server:call(Pid, resume).
 destroy(Pid) -> gen_server:call(Pid, destroy, 60000).
@@ -22,6 +21,8 @@ init([Account]) ->
   SnapDir = filename:join(snap_root(), Account),
 
   ok = prepare_dirs(User, RtDir, WorkDir, SnapDir),
+  _ = pg:join({picard_session, Account}, self()),
+  _ = pg:join({picard_token, Token}, self()),
   {ok, #{
     account => Account,
     token => Token,
@@ -51,6 +52,10 @@ handle_call(token, _From, State) ->
 
 handle_call(wayvnc_port, _From, State) ->
   {reply, maps:get(port, State), State};
+
+handle_call(info, _From, State) ->
+  {reply, #{account => maps:get(account, State), token => maps:get(token, State),
+            status => maps:get(status, State), port => maps:get(port, State)}, State};
 
 handle_call(freeze, _From, #{status := running} = State) ->
   os:cmd("/opt/session/session_ctl.sh STOP " ++ maps:get(pid_file, State)),
@@ -94,6 +99,10 @@ handle_info({OsPort, {data, Data}}, #{os_port := OsPort} = State) ->
 handle_info(_Info, State) ->
   {noreply, State}.
 
+terminate(_Reason, #{account := Account, token := Token}) ->
+  _ = pg:leave({picard_session, Account}, self()),
+  _ = pg:leave({picard_token, Token}, self()),
+  ok;
 terminate(_Reason, _State) ->
   ok.
 
@@ -105,7 +114,18 @@ prepare_dirs(User, RtDir, WorkDir, SnapDir) ->
   ok = filelib:ensure_dir(filename:join(SnapDir, "x")),
   os:cmd("cp -a " ++ SnapDir ++ "/. " ++ WorkDir ++ " 2>/dev/null || true"),
   os:cmd("chown -R " ++ User ++ ":" ++ User ++ " " ++ RtDir ++ " " ++ WorkDir),
+  link_storage(User, WorkDir),
   ok.
+
+link_storage(User, WorkDir) ->
+  Dir = storage_dir(),
+  os:cmd("mkdir -p " ++ Dir ++ " && chmod 1777 " ++ Dir ++ " && chown root:root " ++ Dir),
+  os:cmd("ln -sfn " ++ Dir ++ " " ++ filename:join(WorkDir, "storage")),
+  os:cmd("chown -h " ++ User ++ ":" ++ User ++ " " ++ filename:join(WorkDir, "storage")),
+  ok.
+
+storage_dir() ->
+   os:getenv("PICARD_STORAGE_DIR", "/storage").
 
 pick_port() -> pick_port(5900).
 pick_port(Port) when Port > 6000 -> error(no_free_port);

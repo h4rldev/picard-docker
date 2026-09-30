@@ -1,0 +1,20 @@
+# docs/compose/caddy.yml
+services:
+  picard:
+    image: picard-node:test
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment: [PICARD_JWT_SECRET=${PICARD_JWT_SECRET}]
+    volumes: [picard-data:/data, storage:/storage]
+    networks: [picard]
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [picard]
+volumes: {picard-data: {}, caddy-data: {}, caddy-config: {}, storage: {}}
+networks: {picard: {}}

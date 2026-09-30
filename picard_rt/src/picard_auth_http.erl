@@ -52,7 +52,7 @@ status(_Req) -> ok_json(#{<<"enabled">> => picard_auth:enabled()}).
 
 list_users(Req) ->
   case require_role(Req, "admin") of
-    ok            -> users_result(errm_sqlite:query(picard_db:db(), "SELECT username, role FROM users ORDER BY username"));
+    ok            -> users_result(picard_db:query("SELECT username, role FROM users ORDER BY username"));
     {error, S, M} -> err(S, M)
   end.
 
@@ -108,7 +108,7 @@ delete_user(Name, _Acting, ActingRole) ->
 
 
 do_delete(Name) ->
-  {ok, _} = errm_sqlite:query(picard_db:db(), "DELETE FROM users WHERE username = ?1", [list_to_binary(Name)]),
+  {ok, _} = picard_db:query("DELETE FROM users WHERE username = ?1", [list_to_binary(Name)]),
   ok_json(#{<<"message">> => <<"User deleted successfully.">>, <<"ok">> => true}).
 
 
@@ -134,7 +134,7 @@ renew(Req) ->
 
 
 do_renew(Name) ->
-  {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET auth_version = auth_version + 1 WHERE username = ?1", [list_to_binary(Name)]),
+  {ok, _} = picard_db:query("UPDATE users SET auth_version = auth_version + 1 WHERE username = ?1", [list_to_binary(Name)]),
   ok_json(#{<<"message">> => <<"Renew successful.">>, <<"ok">> => true}).
 
 
@@ -150,7 +150,7 @@ change_role(_Req, _Name, "superadmin") -> err(400, "Super-Admin is env-managed")
 change_role(Req, Name, _) ->
   case body_json(Req) of
     {ok, #{<<"role">> := Role}} when Role =:= <<"user">>; Role =:= <<"admin">> ->
-      {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET role = ?2 WHERE username = ?1", [list_to_binary(Name), Role]),
+      {ok, _} = picard_db:query("UPDATE users SET role = ?2 WHERE username = ?1", [list_to_binary(Name), Role]),
       ok_json(#{<<"message">> => <<"Role changed successfully.">>, <<"ok">> => true});
     {ok, _} -> err(400, "Invalid role");
     {error, _} -> err(400, "Invalid JSON")
@@ -186,7 +186,7 @@ assignable(_, _) -> false.
 
 
 exists_superadmin() ->
-  exists_superadmin(errm_sqlite:query(picard_db:db(), "SELECT 1 FROM users WHERE role = 'superadmin' LIMIT 1")).
+  exists_superadmin(picard_db:query("SELECT 1 FROM users WHERE role = 'superadmin' LIMIT 1")).
 
 exists_superadmin({ok, [_]}) -> true;
 exists_superadmin(_) -> false.
@@ -194,13 +194,13 @@ exists_superadmin(_) -> false.
 
 set_password(Name, NewPW) ->
   {ok, Hash} = errm_argon:hash(binary_to_list(NewPW)),
-  {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET password_hash = ?2, auth_version = auth_version + 1 WHERE username = ?1", [list_to_binary(Name), Hash]),
+  {ok, _} = picard_db:query("UPDATE users SET password_hash = ?2, auth_version = auth_version + 1 WHERE username = ?1", [list_to_binary(Name), Hash]),
   ok_json(#{<<"message">> => <<"Password set successfully.">>, <<"ok">> => true}).
 
 
 insert_user(UN, PW, Role) ->
   {ok, Hash} = errm_argon:hash(binary_to_list(PW)),
-  case errm_sqlite:query(picard_db:db(), "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)", [UN, Hash, Role]) of
+  case picard_db:query("INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)", [UN, Hash, Role]) of
     {ok,    _} -> ok_json(#{<<"message">> => <<"User added successfully.">>, <<"ok">> => true});
     {error, _} -> err(400, "User already exists")
   end.
@@ -229,7 +229,7 @@ role_of(Req) ->
 
 
 target_role(Name) ->
-  role_result(errm_sqlite:query(picard_db:db(), "SELECT role FROM users WHERE username = $1", [list_to_binary(Name)])).
+  role_result(picard_db:query("SELECT role FROM users WHERE username = $1", [list_to_binary(Name)])).
 
 
 role_result({ok, [Row]}) -> maps:get("role", Row);

@@ -2,8 +2,9 @@
 -behaviour (errm_ws_handler).
 -export ([init/2, handle_text/2, handle_binary/2, handle_info/2, handle_ping/2, handle_pong/2, terminate/2]).
 
-init(_RequestInfo, #{port := Port, token := Token}) ->
-  case connect_vnc(Port, 50) of
+init(_RequestInfo, #{port := Port, token := Token} = Args) ->
+  Host = maps:get(host, Args, "127.0.0.1"),
+  case connect_vnc(Host, Port, 50) of
     {ok, Sock} ->
       ok = inet:setopts(Sock, [{active, once}, {packet, raw}, {nodelay, true}]),
       {ok, #{vnc => Sock, token => Token}};
@@ -31,16 +32,15 @@ handle_ping(_Data, State) -> {ok, State}.
 
 handle_pong(_Data, State) -> {ok, State}.
 
-terminate(_Reason, #{vnc := Sock, token := Token}) ->
+terminate(_Reason, #{vnc := Sock}) ->
   _ = gen_tcp:close(Sock),
-  picard_router:freeze_token(Token),
   ok;
 terminate(_Reason, _State) ->
   ok.
 
-connect_vnc(_Port, 0) -> {error, timeout};
-connect_vnc(Port, N) ->
-  case gen_tcp:connect("127.0.0.1", Port, [binary, {active, false}], 200) of
-    {ok, Sock} -> {ok, Sock};
-    {error, _} -> timer:sleep(100), connect_vnc(Port, N - 1)
+connect_vnc(_Host, _Port, 0) -> {error, timeout};
+connect_vnc(Host, Port, N) ->
+  case gen_tcp:connect(Host, Port, [binary, {active, false}], 200) of
+    {ok, Sock} -> logger:info("[vnc] connected to ~s:~p (~p tries left)", [Host, Port, N]), {ok, Sock};
+    {error, _} -> timer:sleep(100), connect_vnc(Host, Port, N - 1)
   end.

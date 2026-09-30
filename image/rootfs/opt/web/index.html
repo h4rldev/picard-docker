@@ -29,21 +29,23 @@
 </head>
 <body>
 <script>
-let token = null;
-const start = async () => {
-  token = null;
+  let token = null;
+  window.addEventListener('storage', (e) => { if (e.key === 'picard_logout') location.reload(); });
+  const start = async () => {
+    token = null;
   try {
     const r = await fetch('/route');
     const j = await r.json();
     token = j.token;
   } catch (e) { document.body.textContent = 'route failed'; return; }
   const frame = document.createElement('iframe');
-  frame.src = `/novnc/vnc.html?autoconnect=true&path=/vnc/${token}&resize=remote&reconnect=true`;
+  frame.src = `/novnc/vnc.html?autoconnect=true&path=/vnc/${token}&resize=remote`;
   document.body.appendChild(frame);
-  const ping = (p) => { try { fetch(p, { keepalive: true }); } catch (e) {} };
+  const ping = (p) => { try { fetch(p, { keepalive: true }).then(r => { if (r.status === 401) location.reload(); }).catch(() => {}); } catch (e) {} };
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) ping('/sleep/' + token); else ping('/alive/' + token);
   });
+  window.addEventListener('focus', () => { if (token) ping('/alive/' + token); });
   window.addEventListener('pagehide', () => ping('/sleep/' + token));
   setInterval(() => { if (!document.hidden) ping('/alive/' + token); }, 30000);
 };
@@ -115,8 +117,9 @@ const mountMenu = (me) => {
   };
 
   $('logoutBtn').onclick = async () => {
-    if (token) await fetch('/sleep/' + token, {keepalive: true}).catch(() => {});
+    if (token) await fetch('/sleep/' + token, { keepalive: true }).catch(() => {});
     await api('GET', '/auth/logout').catch(() => {});
+    try { localStorage.setItem('picard_logout', String(Date.now())); } catch (e) {}
     location.reload();
   };
 

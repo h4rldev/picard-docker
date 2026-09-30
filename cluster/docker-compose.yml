@@ -1,0 +1,28 @@
+services:
+  node1:
+    image: picard-node:test
+    hostname: node1
+    restart: unless-stopped
+    stop_grace_period: 60s
+    ports: ["8080:8080"]
+    environment:
+      - PICARD_COOKIE=${PICARD_COOKIE}
+      - PICARD_SEED_NODES=picard@node1,picard@node2
+      - PICARD_JWT_SECRET=${PICARD_JWT_SECRET}
+      - PICARD_DB_OWNER=1
+    volumes: [node1-data:/data, storage:/storage]
+    networks: [picard]
+  node2:
+    image: picard-node:test
+    hostname: node2
+    restart: unless-stopped
+    stop_grace_period: 60s
+    ports: ["8081:8080"]
+    environment:
+      - PICARD_COOKIE=${PICARD_COOKIE}
+      - PICARD_SEED_NODES=picard@node1,picard@node2
+      - PICARD_JWT_SECRET=${PICARD_JWT_SECRET}
+    volumes: [node2-data:/data, storage:/storage]
+    networks: [picard]
+volumes: {node1-data: {}, node2-data: {}, storage: {}}
+networks: {picard: {}}

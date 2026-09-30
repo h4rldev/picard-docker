@@ -24,56 +24,36 @@ init([]) ->
   {ok, #{}}.
 
 handle_call({route, Account}, _From, State) ->
-  case select_by(Account, frozen) of
-    [Pid] ->
-      picard_session:resume(Pid),
-
-      Token = picard_session:token(Pid),
-      logger:info("[router] resumed account=~s token=~s", [Account, Token]),
-      mark_alive(Token, Account, Pid, running, picard_session:wayvnc_port(Pid)),
-      {reply, {ok, Token}, State};
-    [] ->
-      case picard_admission:can_start() of
-        true ->
-          {ok, Pid} = picard_sessions_sup:start_session(Account),
-          erlang:monitor(process, Pid),
-          
-          Token = picard_session:token(Pid),
-          mark_alive(Token, Account, Pid, running, picard_session:wayvnc_port(Pid)),
-          logger:info("[router] spawned account=~s token=~s", [Account, Token]),
-          {reply, {ok, Token}, State};
-        false ->
-          {reply, {error, capacity}, State}
-      end
-  end;
+ {reply, route_account(Account), State};
 handle_call({freeze, Token, Account}, _From, State) ->
-  case lookup(Token) of
-    {ok, Account, Pid, running, _Port} ->
-      picard_session:freeze(Pid),
-      {reply, ok, State};
-    _ ->
-      {reply, ok, State}
-  end;
+  case session_by_token(Token, Account) of
+    {ok, Pid} -> freeze_quietly(Pid);
+    error -> ok
+  end,
+  {reply, ok, State};
 handle_call({alive, Token, Account}, _From, State) ->
-  case lookup(Token) of
-    {ok, Account, Pid, Status, Port} ->
-      case Status of
-        frozen ->
-          picard_session:resume(Pid),
-          mark_alive(Token, Account, Pid, running, Port);
-        running ->
-          mark_alive(Token, Account, Pid, running, Port)
-      end,
-      {reply, ok, State};
-    _ ->
-      {reply, ok, State}
-  end;
+  case session_by_token(Token, Account) of
+    {ok, Pid} ->
+      try
+        ok = picard_session:resume(Pid),
+        #{port := Port} = picard_session:info(Pid),
+        mark_alive(Token, Account, Pid, running, Port)
+      catch _:_ -> ok
+      end;
+    error -> ok
+  end,
+  {reply, ok, State};
 handle_call({lookup_token, Token, Account}, _From, State) ->
-  case lookup(Token) of
-    {ok, Account, _Pid, _Status, Port} -> {reply, {ok, Port}, State};
-    _ -> {reply, error, State}
+  case session_by_token(Token, Account) of
+    {ok, Pid} ->
+      try
+        ok = picard_session:resume(Pid),
+        #{port := Port} = picard_session:info(Pid),
+        {reply, {ok, Port, node(Pid)}, State}
+      catch _:_ -> {reply, error, State}
+      end;
+    error -> {reply, error, State}
   end;
-
 handle_call(_Req, _From, State) ->
   {reply, {error, unknown}, State}.
 
@@ -82,10 +62,8 @@ freeze_token(Token) ->
   gen_server:cast(?MODULE, {freeze_token, Token}).
 
 handle_cast({freeze_token, Token}, State) ->
-  case lookup(Token) of
-    {ok, _Account, Pid, running, _Port} -> picard_session:freeze(Pid);
-    _ -> ok
-  end,
+  Pids = try pg:get_members({picard_token, Token}) catch _:_ -> [] end,
+  lists:foreach(fun freeze_quietly/1, Pids),
   {noreply, State};
 handle_cast({session_frozen, Pid}, State) ->
   case lookup_pid(Pid) of
@@ -131,20 +109,75 @@ freeze_all() ->
 mark_alive(Token, Account, Pid, Status, Port) ->
   ets:insert(?TAB, {Token, Account, Pid, Status, Port, now_sec()}).
 
-lookup(Token) ->
-  case ets:lookup(?TAB, Token) of
-    [{Token, Account, Pid, Status, Port, _Last}] -> {ok, Account, Pid, Status, Port};
-    [] -> error
-  end.
-
 lookup_pid(Pid) ->
   case ets:match_object(?TAB, {'_', '_', Pid, '_', '_', '_'}) of
     [{Token, Account, _Pid, _Status, Port, _Last}] -> {ok, Account, Token, Port};
     _ -> error
   end.
 
-select_by(Account, Status) ->
-  ets:select(?TAB, [{{'_', '$1', '$2', '$3', '_', '_'}, [{'=:=', '$1', Account}, {'=:=', '$3', Status}], ['$2']}]).
-
 now_sec() ->
   erlang:monotonic_time(second).
+
+route_account(Account) ->
+  case find_frozen(Account) of
+    {ok, Pid} ->
+      try
+        ok = picard_session:resume(Pid),
+        attach(Account, Pid)
+      catch _:_ -> new_session(Account)
+      end;
+    error -> new_session(Account)
+  end.
+
+attach(Account, Pid) ->
+  #{token := Token, port := Port} = picard_session:info(Pid),
+  mark_alive(Token, Account, Pid, running, Port),
+  logger:info("[router] attached account=~s token=~s", [Account, Token]),
+  {ok, Token}.
+
+new_session(Account) ->
+  case picard_admission:can_start() of
+    true ->
+      {ok, Pid} = picard_sessions_sup:start_session(Account),
+      erlang:monitor(process, Pid),
+      #{token := Token, port := Port} = picard_session:info(Pid),
+      mark_alive(Token, Account, Pid, running, Port),
+      logger:info("[router] spawned account=~s token=~s", [Account, Token]),
+      {ok, Token};
+    false ->
+      {error, capacity}
+  end.
+
+find_frozen(Account) ->
+  Pids = try pg:get_members({picard_session, Account}) catch _:_ -> [] end,
+  find_status(Pids, frozen).
+
+find_status([], _Status) -> error;
+find_status([Pid | Rest], Status) ->
+  try picard_session:info(Pid) of
+    #{status := Status} ->
+       {ok, Pid};
+    _ ->
+       find_status(Rest, Status)
+  catch _:_ ->
+      find_status(Rest, Status)
+  end.
+
+session_by_token(Token, Account) ->
+  Pids = try pg:get_members({picard_token, Token}) catch _:_ ->
+                                                       [] end,
+  find_account(Pids, Account).
+
+find_account([], _Account) -> error;
+find_account([Pid | Rest], Account) -> 
+  try picard_session:info(Pid) of
+    #{account := Account} ->
+       {ok, Pid};
+    _ ->
+      find_account(Rest, Account)
+  catch _:_ ->
+      find_account(Rest, Account)
+  end.
+
+freeze_quietly(Pid) ->
+  try picard_session:freeze(Pid) catch _:_ -> ok end.

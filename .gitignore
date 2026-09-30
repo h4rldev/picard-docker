@@ -1,3 +1,6 @@
 .direnv
 *.dump
 tmp-shots
+.env
+!.env.example
+!.envrc

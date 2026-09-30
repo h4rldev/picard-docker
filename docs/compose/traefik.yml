@@ -1,0 +1,36 @@
+# docs/compose/traefik.yml
+services:
+  picard:
+    image: picard-node:test
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment: [PICARD_JWT_SECRET=${PICARD_JWT_SECRET}]
+    volumes: [picard-data:/data, storage:/storage]
+    networks: [picard]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.picard.rule=Host(`picard.example.com`)
+      - traefik.http.routers.picard.entrypoints=websecure
+      - traefik.http.routers.picard.tls.certresolver=le
+      - traefik.http.routers.picard.middlewares=picard-auth,picard-user
+      - traefik.http.middlewares.picard-auth.basicauth.users=alice:$$apr1$$REPLACE$$WITH$$HASH
+      - traefik.http.middlewares.picard-user.headers.customrequestheaders.X-Forwarded-User=alice
+      - traefik.http.services.picard.loadbalancer.server.port=8080
+  traefik:
+    image: traefik:v3
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    command:
+      - --providers.docker=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.le.acme.email=admin@example.com
+      - --certificatesresolvers.le.acme.tlschallenge=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
+    networks: [picard]
+volumes: {picard-data: {}, traefik-certs: {}, storage: {}}
+networks: {picard: {}}

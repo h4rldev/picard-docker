@@ -26,16 +26,15 @@ default_superadmin() ->
 
 
 upsert_superadmin(User, Password) ->
-  Db = picard_db:db(),
   {ok, Hash} = errm_argon:hash(Password),
   Sql = "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, 'superadmin')
         ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash, role = 'superadmin'",
-  {ok, _} = errm_sqlite:query(Db, Sql, [list_to_binary(User), Hash]),
-  {ok, _} = errm_sqlite:query(Db, "UPDATE users SET role = 'admin' WHERE role = 'superadmin' AND username <> $1", [list_to_binary(User)]),
+  {ok, _} = picard_db:query(Sql, [list_to_binary(User), Hash]),
+  {ok, _} = picard_db:query("UPDATE users SET role = 'admin' WHERE role = 'superadmin' AND username <> $1", [list_to_binary(User)]),
   ok.
 
 superadmin_name() ->
-  superadmin_name(errm_sqlite:query(picard_db:db(), "SELECT username FROM users WHERE role = 'superadmin' LIMIT 1")).
+  superadmin_name(picard_db:query("SELECT username FROM users WHERE role = 'superadmin' LIMIT 1")).
 
 superadmin_name({ok, []}) -> undefined;
 superadmin_name({ok, [Row]}) -> maps:get("username", Row);
@@ -45,14 +44,14 @@ superadmin_name({error, Reason}) ->
 
 
 enabled() ->
-  enabled(errm_sqlite:query(picard_db:db(), "SELECT COUNT(*) AS c FROM users")).
+  enabled(picard_db:query("SELECT COUNT(*) AS c FROM users")).
 
 enabled({ok, [Row]}) -> maps:get("c", Row) > 0;
 enabled(_) -> false.
 
 
 login(Username, Password) ->
-  login_result(errm_sqlite:query(picard_db:db(), "SELECT username, password_hash, role, auth_version FROM users WHERE username = $1", [Username]), Password).
+  login_result(picard_db:query("SELECT username, password_hash, role, auth_version FROM users WHERE username = $1", [Username]), Password).
 login_result({ok, []}, _Password) -> {error, invalid_credentials};
 login_result({ok, [Row]}, Password) -> verify_password(Row, Password);
 login_result({error, Reason}, _Password) -> {error, {db_error, Reason}}.
@@ -99,7 +98,7 @@ check_version(false, _Claims) -> {error, stale_session}.
 session_valid(Claims) ->
   Sub = maps:get(<<"sub">>, Claims, undefined),
   Ver = maps:get(<<"ver">>, Claims, undefined),
-  version_matches(errm_sqlite:query(picard_db:db(), "SELECT auth_version FROM users WHERE username = $1", [Sub]), Ver).
+  version_matches(picard_db:query("SELECT auth_version FROM users WHERE username = $1", [Sub]), Ver).
 
 version_matches({ok, [Row]}, Ver) -> maps:get("auth_version", Row) =:= Ver;
 version_matches(_, _) -> false.

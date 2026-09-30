@@ -50,8 +50,8 @@ vnc_handler(Req) ->
       {ok, {400, #{<<"content-type">> => <<"text/plain">>}, <<"Not found">>}};
     _ ->
       case picard_router:lookup_token(Token, Account) of
-        {ok, Port} ->
-          {upgrade, errm_ws, {picard_vnc_proxy, #{token => Token, port => Port}}};
+        {ok, Port, Owner} ->
+          {upgrade, errm_ws, {picard_vnc_proxy, #{token => Token, host => host(Owner), port => Port}}};
         error ->
           {ok, {400, #{<<"content-type">> => <<"text/plain">>}, <<"Not found">>}}
       end
@@ -80,3 +80,15 @@ http_port() ->
 
 web_root() ->
   os:getenv("PICARD_WEB_ROOT", "/opt/web").
+
+host(Owner) ->
+  case Owner =:= node() of
+    true ->
+      "127.0.0.1";
+    false ->
+      case string:split(atom_to_list(Owner), "@", trailing) of
+        [_Name, Host] ->
+          Host;
+        _ -> "127.0.0.1"
+      end
+  end.

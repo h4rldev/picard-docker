@@ -37,7 +37,7 @@ setsid su "$SESSION_USER" -s /bin/sh -c '
     esac
   done
 
-  wayvnc --keyboard picard 127.0.0.1 "$3" &
+  wayvnc --keyboard picard 0.0.0.0 "$3" &
   wait "$SWAY_PID"
 ' sh "$RTDIR" "$HOME_DIR" "$WAYVNC_PORT" &
 SESSION_PID=$!
