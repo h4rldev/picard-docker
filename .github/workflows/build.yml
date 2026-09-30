@@ -45,7 +45,7 @@ jobs:
           file: image/Dockerfile
           platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
-          build-args: GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          secrets: gh_token=${{ secrets.GITHUB_TOKEN }}
           outputs: ${{ github.event_name != 'pull_request' && format('type=image,push-by-digest=true,name={0}', env.IMAGE) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -54,13 +54,13 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           mkdir -p /tmp/digests
-          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ steps.build.outputs.digest }}"
+          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ matrix.arch }}"
 
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request'
         with:
           name: digest-${{ matrix.arch }}
-          path: /tmp/digests/${{ steps.build.outputs.digest }}
+          path: /tmp/digests/${{ matrix.arch }}
           retention-days: 1
 
   merge:
@@ -102,6 +102,6 @@ jobs:
           cd /tmp/digests
           docker buildx imagetools create \
             $(jq -r '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.IMAGE }}@%s ' *)
+            $(for f in *; do printf '${{ env.IMAGE }}@%s ' "$(cat "$f")"; done)
         env:
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
