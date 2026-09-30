@@ -1,7 +1,7 @@
 # docs/compose/nginx.yml
 services:
   picard:
-    image: picard-node:test
+    image: ghcr.io/h4rl/picard-docker:latest
     restart: unless-stopped
     stop_grace_period: 60s
     environment: [PICARD_JWT_SECRET=${PICARD_JWT_SECRET}]

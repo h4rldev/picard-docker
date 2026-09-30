@@ -20,7 +20,7 @@ precedence over `X-Forwarded-User`, so use it when you need admin.
 ```yaml
 services:
   picard:
-    image: picard-node:test
+    image: ghcr.io/h4rl/picard-docker:latest
     stop_grace_period: 60s
     volumes: [picard-data:/data, storage:/storage]
     environment:
