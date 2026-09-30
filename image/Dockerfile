@@ -21,6 +21,7 @@ RUN mkdir -p /build/picard_rt_app && \
 
 FROM alpine:3.22
 ARG TARGETARCH
+ARG GITHUB_TOKEN
 
 RUN apk add --no-cache \
     picard \
@@ -48,7 +49,8 @@ RUN adduser -D -u 1000 -s /bin/sh app
 
 RUN set -eu; \
     case "$TARGETARCH" in arm64) A=aarch64 ;; *) A=x86_64 ;; esac; \
-    URL=$(curl -fsSL https://api.github.com/repos/pkgforge-dev/Helium-Browser-AppImage-Enhanced/releases/latest | jq -r --arg a "$A" '.assets[] | select(.name | endswith(".AppImage") and contains($a)) | .browser_download_url' | head -n1); \
+    URL=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN:-}" https://api.github.com/repos/pkgforge-dev/Helium-Browser-AppImage-Enhanced/releases/latest | jq -r --arg a "$A" '.assets[] | select(.name | endswith(".AppImage") and contains($a)) | .browser_download_url' | head -n1); \
+    [ -n "$URL" ] || { echo "no helium asset for $A"; exit 1; }; \
     curl -fsSL "$URL" -o /tmp/helium.AppImage; \
     chmod +x /tmp/helium.AppImage; \
     /tmp/helium.AppImage --appimage-extract >/dev/null; \

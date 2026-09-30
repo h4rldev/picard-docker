@@ -45,6 +45,7 @@ jobs:
           file: image/Dockerfile
           platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
+          build-args: GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
           outputs: ${{ github.event_name != 'pull_request' && format('type=image,push-by-digest=true,name={0}', env.IMAGE) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
