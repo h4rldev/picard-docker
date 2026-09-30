@@ -11,6 +11,7 @@ if ! id "$SESSION_USER" >/dev/null 2>&1; then
   adduser -D -H -s /bin/sh "$SESSION_USER"
 fi
 
+rm -rf "$RTDIR"
 mkdir -p "$RTDIR" "$HOME_DIR"
 chown -R "$SESSION_USER:$SESSION_USER" "$RTDIR" "$HOME_DIR"
 chmod 700 "$RTDIR"

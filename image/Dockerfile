@@ -2,7 +2,7 @@ FROM alpine:3.22 AS build
 
 ENV ERL_ROOT=/usr/lib/erlang REBAR_PROFILE=prod
 
-RUN apk add --no-cache erlang28 erlang28-dev git bash curl gcc musl-dev pkgconf file-dev; \
+RUN apk add --no-cache erlang28 erlang28-dev git bash curl gcc musl-dev pkgconf file-dev sqlite-dev argon2-dev; \
   curl -fsSL -o /usr/local/bin/rebar3 https://s3.amazonaws.com/rebar3/rebar3 \
   && chmod +x /usr/local/bin/rebar3; \
   curl -fsSL -o /tmp/just.tar.gz https://github.com/casey/just/releases/download/1.58.0/just-1.58.0-x86_64-unknown-linux-musl.tar.gz \
@@ -12,6 +12,9 @@ RUN apk add --no-cache erlang28 erlang28-dev git bash curl gcc musl-dev pkgconf 
 COPY picard_rt/ /build/picard_rt/
 
 RUN cd /build/picard_rt && DIAGNOSTIC=1 rebar3 as prod compile
+RUN mkdir -p /build/picard_rt_app && \
+    cp -a /build/picard_rt/_build/prod/lib/picard_rt/ebin /build/picard_rt_app/ebin && \
+    cp -a /build/picard_rt/priv /build/picard_rt_app/priv
 
 FROM alpine:3.22
 
@@ -32,6 +35,8 @@ RUN apk add --no-cache \
     erlang28 \
     file \
     ca-certificates \
+    sqlite-libs \
+    argon2-libs \
     && setcap -r /usr/bin/sway
 
 RUN adduser -D -u 1000 -s /bin/sh app
@@ -70,9 +75,14 @@ RUN set -eu; \
     rm -f /tmp/novnc.tar.gz; \
     sed -i '/encs.push(encodings.pseudoEncodingQEMUExtendedKeyEvent);/d' /opt/web/novnc/core/rfb.js
 
-COPY --from=build /build/picard_rt/_build/prod/lib/picard_rt /opt/picard_rt/picard_rt
+COPY --from=build /build/picard_rt_app /opt/picard_rt/picard_rt
 COPY --from=build /build/picard_rt/_build/default/lib/errm_http /opt/picard_rt/errm_http
 COPY --from=build /build/picard_rt/_build/default/lib/errm_ws /opt/picard_rt/errm_ws
+COPY --from=build /build/picard_rt/_build/default/lib/errm_sqlite /opt/picard_rt/errm_sqlite
+COPY --from=build /build/picard_rt/_build/default/lib/errm_argon /opt/picard_rt/errm_argon
+COPY --from=build /build/picard_rt/_build/default/lib/errm_jwt /opt/picard_rt/errm_jwt
+COPY --from=build /build/picard_rt/_build/default/lib/errm_json /opt/picard_rt/errm_json
+COPY --from=build /build/picard_rt/_build/default/lib/errm_uuid /opt/picard_rt/errm_uuid
 
 RUN mkdir -p /data/snapshots /data/work /run/picard
 

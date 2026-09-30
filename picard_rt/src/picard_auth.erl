@@ -3,7 +3,6 @@
 
 -define (PROTECTED, [["route"], ["vnc"], ["sleep"], ["alive"], ["users"]]).
 
-
 ensure_superadmin() ->
   ensure_superadmin(
     picard_config:get_str("superadmin_user", undefined), 

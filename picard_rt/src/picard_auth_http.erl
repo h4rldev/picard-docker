@@ -33,7 +33,7 @@ logout(_Req) ->
     }
   ),
 
-  Resp = {200, #{<<"content-type">> => <<"application/json">>}, <<"{\"ok\": true}">>},
+  Resp = {200, #{<<"content-type">> => <<"application/json">>}, <<"{\"message\"; \"User logged out successfully.\", \"ok\": true}">>},
   {ok, errm_http_cookie:add_cookies(Resp, [Delete])}.
 
 
@@ -108,8 +108,8 @@ delete_user(Name, _Acting, ActingRole) ->
 
 
 do_delete(Name) ->
-  {ok, _} = errm_sqlite:query(picard_db:db(), "DELETE FROM users WHERE username = $1", [list_to_binary(Name)]),
-  ok_json(#{<<"ok">> => true}).
+  {ok, _} = errm_sqlite:query(picard_db:db(), "DELETE FROM users WHERE username = ?1", [list_to_binary(Name)]),
+  ok_json(#{<<"message">> => <<"User deleted successfully.">>, <<"ok">> => true}).
 
 
 change_password(Req) ->
@@ -134,8 +134,8 @@ renew(Req) ->
 
 
 do_renew(Name) ->
-  {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET auth_version = auth_version + 1 WHERE username = $1", [list_to_binary(Name)]),
-  ok_json(#{<<"ok">> => true}).
+  {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET auth_version = auth_version + 1 WHERE username = ?1", [list_to_binary(Name)]),
+  ok_json(#{<<"message">> => <<"Renew successful.">>, <<"ok">> => true}).
 
 
 change_role(Req) ->
@@ -150,17 +150,21 @@ change_role(_Req, _Name, "superadmin") -> err(400, "Super-Admin is env-managed")
 change_role(Req, Name, _) ->
   case body_json(Req) of
     {ok, #{<<"role">> := Role}} when Role =:= <<"user">>; Role =:= <<"admin">> ->
-      {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET role = $2 WHERE username = $1", [list_to_binary(Name), Role]),
-      ok_json(#{<<"ok">> => true});
+      {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET role = ?2 WHERE username = ?1", [list_to_binary(Name), Role]),
+      ok_json(#{<<"message">> => <<"Role changed successfully.">>, <<"ok">> => true});
     {ok, _} -> err(400, "Invalid role");
     {error, _} -> err(400, "Invalid JSON")
   end.
 
 
 allowed_target(Req, Name) ->
-  case require_role(Req, "admin") of
-    ok -> allowed_target(Name, maps:get(account, Req, ""), role_of(Req));
-    E -> E
+  case maps:get(account, Req, "") of
+    Name -> ok;
+    _ ->
+      case require_role(Req, "admin") of
+        ok -> allowed_target(Name, maps:get(account, Req, ""), role_of(Req));
+        E -> E
+      end
   end.
 
 allowed_target(Name, Name, _) -> ok;
@@ -190,14 +194,14 @@ exists_superadmin(_) -> false.
 
 set_password(Name, NewPW) ->
   {ok, Hash} = errm_argon:hash(binary_to_list(NewPW)),
-  {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET password_hash = $2, auth_version = auth_version + 1 WHERE username = $1", [list_to_binary(Name), Hash]),
-  ok_json(#{<<"ok">> => true}).
+  {ok, _} = errm_sqlite:query(picard_db:db(), "UPDATE users SET password_hash = ?2, auth_version = auth_version + 1 WHERE username = ?1", [list_to_binary(Name), Hash]),
+  ok_json(#{<<"message">> => <<"Password set successfully.">>, <<"ok">> => true}).
 
 
 insert_user(UN, PW, Role) ->
   {ok, Hash} = errm_argon:hash(binary_to_list(PW)),
   case errm_sqlite:query(picard_db:db(), "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)", [UN, Hash, Role]) of
-    {ok,    _} -> ok_json(#{<<"ok">> => true});
+    {ok,    _} -> ok_json(#{<<"message">> => <<"User added successfully.">>, <<"ok">> => true});
     {error, _} -> err(400, "User already exists")
   end.
 

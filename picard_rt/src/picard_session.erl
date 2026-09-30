@@ -8,9 +8,9 @@ start_link(Account) ->
 
 token(Pid) -> gen_server:call(Pid, token).
 wayvnc_port(Pid) -> gen_server:call(Pid, wayvnc_port).
-freeze(Pid) -> gen_server:call(Pid, freeze).
+freeze(Pid) -> gen_server:call(Pid, freeze, 60000).
 resume(Pid) -> gen_server:call(Pid, resume).
-destroy(Pid) -> gen_server:call(Pid, destroy).
+destroy(Pid) -> gen_server:call(Pid, destroy, 60000).
 
 init([Account]) ->
   Sid = erlang:unique_integer([positive]),
@@ -56,13 +56,16 @@ handle_call(freeze, _From, #{status := running} = State) ->
   #{snap_dir := SnapDir, work_dir := WorkDir} = State,
   os:cmd("rm -rf " ++ SnapDir ++ " && cp -a " ++ WorkDir ++ " " ++ SnapDir),
   gen_server:cast(picard_router, {session_frozen, self()}),
+  logger:info("[session] fresh-freeze user=~s work_dir=~s", [maps:get(user, State), WorkDir]),
   {reply, ok, State#{status := frozen}};
 handle_call(freeze, _From, State) ->
   {reply, ok, State};
 
 handle_call(resume, _From, #{status := frozen} = State) ->
   os:cmd("/opt/session/session_ctl.sh CONT"),
+  logger:info("[session] resume user=~s", [maps:get(user, State)]),
   {reply, ok, State#{status := running}};
+
 handle_call(resume, _From, State) ->
   {reply, ok, State};
 
@@ -70,6 +73,7 @@ handle_call(destroy, _From, State) ->
   os:cmd("/opt/session/session_ctl.sh KILL"),
   #{work_dir := WorkDir} = State,
   os:cmd("rm -rf " ++ WorkDir),
+  logger:info("[session] destroy user=~s", [maps:get(user, State)]),
   {stop, normal, ok, State};
 
 handle_call(_Req, _From, State) ->
@@ -94,6 +98,7 @@ terminate(_Reason, _State) ->
 
 prepare_dirs(User, RtDir, WorkDir, SnapDir) ->
   os:cmd("adduser -D -H -s /bin/sh " ++ User ++ " 2>/dev/null || true"),
+  os:cmd("rm -rf " ++ WorkDir),
   ok = filelib:ensure_dir(filename:join(RtDir, "x")),
   ok = filelib:ensure_dir(filename:join(WorkDir, "x")),
   ok = filelib:ensure_dir(filename:join(SnapDir, "x")),

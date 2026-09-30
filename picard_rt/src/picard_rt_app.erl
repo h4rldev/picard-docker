@@ -1,6 +1,6 @@
 -module (picard_rt_app).
 -behaviour (application).
--export ([start/2, stop/1]).
+-export ([start/2, stop/1, prep_stop/1]).
 
 start(_StartType, _StartArgs) ->
     logger:set_primary_config(level, info),
@@ -9,6 +9,10 @@ start(_StartType, _StartArgs) ->
     picard_db:init(),
     picard_auth:ensure_superadmin(),
     picard_rt_sup:start_link().
+
+prep_stop(State) ->
+  picard_router:freeze_all(),
+  State.
 
 stop(_State) ->
     ok.

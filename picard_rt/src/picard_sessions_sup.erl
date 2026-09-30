@@ -7,7 +7,7 @@ start_link() ->
 
 start_session(Account) ->
   supervisor:start_child(?MODULE, [Account]).
-
+  
 init([]) ->
   Session = #{
     id => picard_session,

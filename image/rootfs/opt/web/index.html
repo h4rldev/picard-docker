@@ -4,14 +4,34 @@
 <head>
   <meta charset="utf-8">
   <title>MusicBrainz Picard</title>
-  <style>html,body{margin:0;height:100%;font-family:system-ui,sans-serif}
-  input,button{display:block;width:100%;padding:10px;margin:6px 0;box-sizing:border-box}
-  #login{max-width:300px;margin:15% auto;padding:20px}</style>
+  <style>
+    html,body{margin:0;height:100%;font-family:system-ui,sans-serif}
+    input,button{display:block;width:100%;padding:10px;margin:6px 0;box-sizing:border-box}
+    #login{max-width:300px;margin:15% auto;padding:20px}
+    iframe{position:fixed;inset:0;width:100%;height:100%;border:0}
+    #menu{position:fixed;top:0;right:0;height:100%;width:340px;max-width:90vw;background:#1b1b1b;color:#eee;z-index:50;padding:16px;box-sizing:border-box;overflow:auto;transform:translateX(100%);transition:transform .2s ease;font-size:14px}
+    #menu.open{transform:translateX(0)}
+    #menuHandle{position:fixed;top:45%;right:0;z-index:60;width:20px;height:64px;padding:0;margin:0;border:0;border-radius:8px 0 0 8px;background:#4a5a6a;color:#dfe7ee;font-size:12px;cursor:pointer;transition:right .2s ease}
+    #menuHandle::before{content:'\276E'}
+    #menu.open + #menuHandle{right:min(340px,90vw)}
+    #menu.open + #menuHandle::before{content:'\276F'}
+    #menu h3{margin:16px 0 4px;font-size:13px;color:#9aa;font-weight:600}
+    #menu .me{display:flex;justify-content:space-between;align-items:baseline}
+    #menu .me small{color:#9aa}
+    #menu input,#menu button,#menu select{width:100%;box-sizing:border-box;padding:8px;margin:4px 0;background:#2a2a2a;color:#eee;border:1px solid #555;border-radius:4px;font-size:14px}
+    #menu .danger{background:#5a1f1f;border-color:#7a2f2f;color:#ffd7d7}
+    #menu .urow{border-bottom:1px solid #333;padding:6px 0}
+    #menu .urow small{margin-left:6px;color:#9aa}
+    #menu .acts{display:flex;gap:4px;margin-top:4px}
+    #menu .acts button,#menu .acts select{width:auto;flex:1;padding:4px;margin:0}
+    #msg{min-height:18px;color:#ff6b6b;font-size:13px}
+  </style>
 </head>
 <body>
 <script>
+let token = null;
 const start = async () => {
-  let token = null;
+  token = null;
   try {
     const r = await fetch('/route');
     const j = await r.json();
@@ -25,7 +45,7 @@ const start = async () => {
     if (document.hidden) ping('/sleep/' + token); else ping('/alive/' + token);
   });
   window.addEventListener('pagehide', () => ping('/sleep/' + token));
-  setInterval(() => ping('/alive/' + token), 30000);
+  setInterval(() => { if (!document.hidden) ping('/alive/' + token); }, 30000);
 };
 const showLogin = () => {
   document.body.innerHTML = `
@@ -47,14 +67,115 @@ const showLogin = () => {
     else document.getElementById('e').textContent = 'Invalid credentials';
   };
 };
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => { const d = document.createElement('i'); d.textContent = s; return d.innerHTML; };
+const api = async (method, path, body) => {
+  const r = await fetch(path, {method,
+    headers: body ? {'content-type': 'application/json'} : {},
+    body: body ? JSON.stringify(body) : undefined});
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+  return r.status === 204 ? null : r.json().catch(() => null);
+};
+
+const mountMenu = (me) => {
+  const isAdmin = me.role !== 'user';
+  const isSuper = me.role === 'superadmin';
+  const w = document.createElement('div');
+   w.innerHTML = `
+    <aside id="menu">
+      <div class="me"><b id="who"></b><small id="role"></small></div>
+      <h3>Change password</h3>
+      <input id="cpw" type="password" placeholder="new password" autocomplete="new-password">
+      <button id="cpwBtn">Update password</button>
+      ${isAdmin ? `<h3>Users</h3>
+        <input id="nu" placeholder="username" autocomplete="off">
+        <input id="np" type="password" placeholder="password" autocomplete="new-password">
+        ${isSuper ? '<select id="nr"><option value="user">user</option><option value="admin">admin</option></select>' : ''}
+        <button id="createBtn">Add user</button>
+        <div id="users"></div>` : ''}
+      <h3>Session</h3>
+      <button id="logoutBtn" class="danger">Sign out</button>
+      <p id="msg"></p>
+    </aside>
+    <button id="menuHandle" title="Account"></button>`;
+
+  document.body.appendChild(w);
+  $('who').textContent = me.username;
+  $('role').textContent = me.role;
+
+  const say = (t, ok) => { const m = $('msg'); m.textContent = t; m.style.color = ok ? '#7bd88f' : '#ff6b6b'; };
+  $('menuHandle').onclick = () => $('menu').classList.toggle('open');
+
+  $('cpwBtn').onclick = async () => {
+    if (!$('cpw').value) return say('Enter a password', false);
+    try { await api('POST', `/users/${encodeURIComponent(me.username)}/password`, {password: $('cpw').value});
+          location.reload(); }
+    catch (e) { say(e.message, false); }
+  };
+
+  $('logoutBtn').onclick = async () => {
+    if (token) await fetch('/sleep/' + token, {keepalive: true}).catch(() => {});
+    await api('GET', '/auth/logout').catch(() => {});
+    location.reload();
+  };
+
+  if (!isAdmin) return;
+
+  const draw = async () => {
+    let list;
+    try { list = await api('GET', '/users'); } catch (e) { return say(e.message, false); }
+    list = list.filter(u => u.username !== me.username && u.role !== 'superadmin');
+    const box = $('users'); box.innerHTML = '';
+    for (const u of list) {
+      const row = document.createElement('div');
+      row.className = 'urow';
+      row.innerHTML = `<b>${esc(u.username)}</b><small>${esc(u.role)}</small><div class="acts">
+        <button data-a="pw">reset</button>
+        <button data-a="kick">kick</button>
+        ${isSuper && u.role !== 'superadmin' ? `<select data-a="role"><option value="user"${u.role==='user'?' selected':''}>user</option><option value="admin"${u.role==='admin'?' selected':''}>admin</option></select>` : ''}
+        ${u.username !== me.username && u.role !== 'superadmin' ? '<button data-a="del" class="danger">del</button>' : ''}</div>`;
+      const q = (a) => row.querySelector(`[data-a=${a}]`);
+      q('pw').onclick = async () => {
+        const pw = prompt(`New password for ${u.username}`); if (!pw) return;
+        try { await api('POST', `/users/${encodeURIComponent(u.username)}/password`, {password: pw}); say('Password reset', true); }
+        catch (e) { say(e.message, false); }
+      };
+      q('kick').onclick = async () => {
+        try { await api('POST', `/users/${encodeURIComponent(u.username)}/auth/renew`); say('Sessions invalidated', true); }
+        catch (e) { say(e.message, false); }
+      };
+      if (q('role')) q('role').onchange = async () => {
+        try { await api('POST', `/users/${encodeURIComponent(u.username)}/role`, {role: q('role').value}); say('Role updated', true); }
+        catch (e) { say(e.message, false); draw(); }
+      };
+      if (q('del')) q('del').onclick = async () => {
+        if (!confirm(`Delete ${u.username}?`)) return;
+        try { await api('DELETE', `/users/${encodeURIComponent(u.username)}`); say('Deleted', true); draw(); }
+        catch (e) { say(e.message, false); }
+      };
+      box.appendChild(row);
+    }
+  };
+
+  $('createBtn').onclick = async () => {
+    const username = $('nu').value, password = $('np').value, role = isSuper ? $('nr').value : 'user';
+    if (!username || !password) return say('username and password required', false);
+    try { await api('POST', '/users', {username, password, role}); $('nu').value = $('np').value = ''; say('User added', true); draw(); }
+    catch (e) { say(e.message, false); }
+  };
+  draw();
+};
+
 (async () => {
   let enabled = false;
   try { enabled = (await (await fetch('/auth/status')).json()).enabled; } catch (e) {}
   if (!enabled) { start(); return; }
-  let authed = false;
-  try { authed = (await fetch('/auth/me')).ok; } catch (e) {}
-if (authed) start(); else showLogin();
+  let me = null;
+  try { const r = await fetch('/auth/me'); if (r.ok) me = await r.json(); } catch (e) {}
+  if (me) { start(); mountMenu(me); } else showLogin();
 })();
+  
 </script>
 </body>
 </html>
