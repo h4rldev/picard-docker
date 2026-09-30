@@ -52,13 +52,15 @@ jobs:
 
       - name: export digest
         if: github.event_name != 'pull_request'
-        run: echo "${{ steps.build.outputs.digest }}" > /tmp/digest-${{ matrix.arch }}.txt
+        run: |
+          mkdir -p /tmp/digests
+          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ steps.build.outputs.digest }}"
 
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request'
         with:
           name: digest-${{ matrix.arch }}
-          path: /tmp/digest-${{ matrix.arch }}.txt
+          path: /tmp/digests/${{ steps.build.outputs.digest }}
           retention-days: 1
 
   merge:
@@ -100,6 +102,6 @@ jobs:
           cd /tmp/digests
           docker buildx imagetools create \
             $(jq -r '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+            $(printf '${{ env.IMAGE }}@%s ' *)
         env:
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
