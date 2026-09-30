@@ -38,18 +38,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
-
       - uses: docker/build-push-action@v6
         id: build
         with:
@@ -57,8 +45,6 @@ jobs:
           file: image/Dockerfile
           platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
           outputs: ${{ github.event_name != 'pull_request' && format('type=image,push-by-digest=true,name={0}', env.IMAGE) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
