@@ -43,15 +43,9 @@ setsid su "$SESSION_USER" -s /bin/sh -c '
 SESSION_PID=$!
 echo "$SESSION_PID" > "$PIDFILE"
 
-wait "$SESSION_PID"
+wait "$SESSION_PID" 2>/dev/null || true
 
-for p in $(ps -eo pid | tail -n +2); do
-  [ "$p" = "$$" ] && continue
-  kill -TERM "$p" 2>/dev/null || true
-done
+kill -TERM -"$SESSION_PID" 2>/dev/null || true
 sleep 1
-for p in $(ps -eo pid | tail -n +2); do
-  [ "$p" = "$$" ] && continue
-  kill -KILL "$p" 2>/dev/null || true
-done
-wait
+kill -KILL -"$SESSION_PID" 2>/dev/null || true
+wait 2>/dev/null || true

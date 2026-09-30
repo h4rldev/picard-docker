@@ -14,7 +14,7 @@ COPY picard_rt/ /build/picard_rt/
 RUN cd /build/picard_rt && DIAGNOSTIC=1 rebar3 as prod compile
 RUN mkdir -p /build/picard_rt_app && \
     cp -a /build/picard_rt/_build/prod/lib/picard_rt/ebin /build/picard_rt_app/ebin && \
-    cp -a /build/picard_rt/priv /build/picard_rt_app/priv
+    cp -a /build/picard_rt/priv /build/picard_rt_app/priv2
 
 FROM alpine:3.22
 
@@ -37,6 +37,7 @@ RUN apk add --no-cache \
     ca-certificates \
     sqlite-libs \
     argon2-libs \
+    patch \
     && setcap -r /usr/bin/sway
 
 RUN adduser -D -u 1000 -s /bin/sh app
@@ -68,12 +69,14 @@ RUN printf '%s\n' \
     > /usr/local/bin/helium; \
     chmod +x /usr/local/bin/helium
 
+COPY image/novnc-dead-keys.patch /tmp/novnc-dead-keys.patch
 RUN set -eu; \
     curl -fsSL -o /tmp/novnc.tar.gz https://github.com/novnc/noVNC/archive/refs/tags/v1.7.0.tar.gz; \
     mkdir -p /opt/web/novnc; \
     tar xzf /tmp/novnc.tar.gz -C /opt/web/novnc --strip-components=1; \
     rm -f /tmp/novnc.tar.gz; \
-    sed -i '/encs.push(encodings.pseudoEncodingQEMUExtendedKeyEvent);/d' /opt/web/novnc/core/rfb.js
+    sed -i '/encs.push(encodings.pseudoEncodingQEMUExtendedKeyEvent);/d' /opt/web/novnc/core/rfb.js; \
+    patch -p1 -d /opt/web/novnc < /tmp/novnc-dead-keys.patch
 
 COPY --from=build /build/picard_rt_app /opt/picard_rt/picard_rt
 COPY --from=build /build/picard_rt/_build/default/lib/errm_http /opt/picard_rt/errm_http

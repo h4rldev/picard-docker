@@ -27,6 +27,7 @@ init([Account]) ->
     token => Token,
     user => User,
     rt_dir => RtDir,
+    pid_file => filename:join(RtDir, "session.pgid"),
     work_dir => WorkDir,
     snap_dir => SnapDir,
     port => Port,
@@ -37,7 +38,7 @@ init([Account]) ->
 handle_continue(boot, State) ->
   #{user := User, rt_dir := RtDir, work_dir := WorkDir, port := Port} = State,
 
-  PidFile = filename:join(RtDir, "session.pgid"),
+  PidFile = maps:get(pid_file, State),
   OsPort = open_port(
     {spawn_executable, "/opt/session/session_run.sh"}, 
     [{args, [User, RtDir, WorkDir, integer_to_list(Port), PidFile]}, exit_status, stderr_to_stdout]
@@ -52,7 +53,7 @@ handle_call(wayvnc_port, _From, State) ->
   {reply, maps:get(port, State), State};
 
 handle_call(freeze, _From, #{status := running} = State) ->
-  os:cmd("/opt/session/session_ctl.sh STOP"),
+  os:cmd("/opt/session/session_ctl.sh STOP " ++ maps:get(pid_file, State)),
   #{snap_dir := SnapDir, work_dir := WorkDir} = State,
   os:cmd("rm -rf " ++ SnapDir ++ " && cp -a " ++ WorkDir ++ " " ++ SnapDir),
   gen_server:cast(picard_router, {session_frozen, self()}),
@@ -62,7 +63,7 @@ handle_call(freeze, _From, State) ->
   {reply, ok, State};
 
 handle_call(resume, _From, #{status := frozen} = State) ->
-  os:cmd("/opt/session/session_ctl.sh CONT"),
+  os:cmd("/opt/session/session_ctl.sh CONT " ++ maps:get(pid_file, State)),
   logger:info("[session] resume user=~s", [maps:get(user, State)]),
   {reply, ok, State#{status := running}};
 
@@ -70,7 +71,7 @@ handle_call(resume, _From, State) ->
   {reply, ok, State};
 
 handle_call(destroy, _From, State) ->
-  os:cmd("/opt/session/session_ctl.sh KILL"),
+  os:cmd("/opt/session/session_ctl.sh KILL " ++ maps:get(pid_file, State)),
   #{work_dir := WorkDir} = State,
   os:cmd("rm -rf " ++ WorkDir),
   logger:info("[session] destroy user=~s", [maps:get(user, State)]),

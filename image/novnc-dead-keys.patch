@@ -1,0 +1,22 @@
+--- a/core/input/util.js
++++ b/core/input/util.js
+@@ -110,6 +110,18 @@
+ // Get the most reliable keysym value we can get from a key event
+ export function getKeysym(evt) {
+     const key = getKey(evt);
+ 
++    // Dead keys (e.g. the Nordic diaeresis key) arrive as key "Dead";
++    // the browser won't give us the composed character, so map the physical
++    // key and modifiers to the literal it would have produced.
++    if (key === 'Dead') {
++        const code = getKeycode(evt);
++        const altgr = evt.getModifierState('AltGraph') || (evt.ctrlKey && evt.altKey);
++        return {
++            BracketRight: altgr ? 0x7e : (evt.shiftKey ? 0x5e : 0xa8),
++            Equal: evt.shiftKey ? 0x60 : 0xb4,
++        }[code] || null;
++    }
++
+     if (key === 'Unidentified') {
+         return null;
+     }

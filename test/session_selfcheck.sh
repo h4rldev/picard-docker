@@ -25,14 +25,14 @@ docker exec picard-selfcheck sh -c '
   ps -eo pid,user,comm | grep -w sway
 '
 echo "== freeze (expect T) =="
-docker exec picard-selfcheck /opt/session/session_ctl.sh STOP
+docker exec picard-selfcheck /opt/session/session_ctl.sh STOP /tmp/session.pgid
 sleep 1
 docker exec picard-selfcheck sh -c 'ps -eo pid,ppid,stat,comm | grep -E "sway|picard|wayvnc"'
 echo "== resume (expect S) =="
-docker exec picard-selfcheck /opt/session/session_ctl.sh CONT
+docker exec picard-selfcheck /opt/session/session_ctl.sh CONT /tmp/session.pgid
 sleep 1
 docker exec picard-selfcheck sh -c 'ps -eo pid,ppid,stat,comm | grep -E "sway|picard|wayvnc"'
 echo "== teardown =="
-docker exec picard-selfcheck /opt/session/session_ctl.sh TERM
+docker exec picard-selfcheck /opt/session/session_ctl.sh TERM /tmp/session.pgid
 sleep 2
 docker inspect -f '{{.State.Running}}' picard-selfcheck
