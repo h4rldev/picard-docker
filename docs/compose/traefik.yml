@@ -1,7 +1,7 @@
 # docs/compose/traefik.yml
 services:
   picard:
-    image: ghcr.io/h4rl/picard-docker:latest
+    image: ghcr.io/h4rldev/picard-docker:latest
     restart: unless-stopped
     stop_grace_period: 60s
     environment: [PICARD_JWT_SECRET=${PICARD_JWT_SECRET}]

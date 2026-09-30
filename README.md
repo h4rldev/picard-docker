@@ -21,9 +21,9 @@ as a terminal, and fuzzel as a launcher.
 Build and run the image:
 
 ```sh
-sudo docker build --network host -f image/Dockerfile -t ghcr.io/h4rl/picard-docker:latest .
+sudo docker build --network host -f image/Dockerfile -t ghcr.io/h4rldev/picard-docker:latest .
 sudo docker run -d --name picard-node -p 8080:8080 --stop-timeout 60 \
-  -v picard-data:/data -v picard-storage:/storage ghcr.io/h4rl/picard-docker:latest
+  -v picard-data:/data -v picard-storage:/storage ghcr.io/h4rldev/picard-docker:latest
 ```
 
 Then open <http://localhost:8080/>. Without a proxy the account is `generic`.
