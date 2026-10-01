@@ -5,4 +5,7 @@ set $mod Mod4
 bindsym $mod+d exec fuzzel
 bindsym $mod+Return exec foot
 
+default_border none
+default_floating_border none
+
 exec env QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1 picard
