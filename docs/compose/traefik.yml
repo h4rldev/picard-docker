@@ -9,6 +9,10 @@ services:
     networks: [picard]
     labels:
       - traefik.enable=true
+      # Only ONE node in a cluster may declare the router. Every other node must
+      # drop the traefik.http.routers.* labels and keep only traefik.enable plus
+      # the service port below, otherwise Traefik drops the duplicated router and
+      # falls through to the catch-all. See docs/gateway.md.
       - traefik.http.routers.picard.rule=Host(`picard.example.com`)
       - traefik.http.routers.picard.entrypoints=websecure
       - traefik.http.routers.picard.tls.certresolver=le

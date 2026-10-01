@@ -9,11 +9,17 @@ Two rules:
 1. **Never expose the node directly.** Any client that can reach port 8080 can send
    `X-Forwarded-User` themselves, or — if no users exist — land on the `generic`
    account. Bind the node to a private network and let only the proxy reach it.
-2. **Terminate TLS at the proxy.** The `session` cookie is `Secure`, so it is only sent
-   over HTTPS.
+2. **Terminate TLS at the proxy.** The `session` cookie is marked `Secure` whenever the
+   request arrives with `X-Forwarded-Proto: https`, so behind a TLS proxy it is only sent
+   over HTTPS. Plain-HTTP access direct to the node omits the flag so you can still log in
+   there for testing.
 
 The app's own login (superadmin) still works through the proxy; the JWT cookie takes
 precedence over `X-Forwarded-User`, so use it when you need admin.
+
+Auth is fail-closed. When the database owner node is unavailable, protected routes return
+401 and new logins return 503 rather than falling back to an unauthenticated `generic`
+account, so an owner outage never exposes `/route` or `/vnc`.
 
 ## Docker Compose (node, no published port)
 
@@ -98,3 +104,12 @@ labels:
 ```
 
 Traefik handles WebSocket upgrades automatically.
+
+When running a cluster behind Traefik, only one node may declare the router
+(`traefik.http.routers.<name>.rule`). If two nodes declare the same router with
+different configurations, Traefik logs "router defined multiple times" and drops
+it, sending traffic to the catch-all. Every node should instead declare
+`traefik.http.services.<name>.loadbalancer.server.port=8080` so both join the
+load balancer, and only the primary node should carry the `traefik.http.routers.*`
+labels. A router with no rule falls back to Traefik's default
+`Host(<container-name>)`, which also fails ACME certificate issuance.

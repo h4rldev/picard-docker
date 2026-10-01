@@ -4,10 +4,16 @@
 <head>
   <meta charset="utf-8">
   <title>MusicBrainz Picard</title>
+  <link rel="icon" href="/picard.ico">
   <style>
-    html,body{margin:0;height:100%;font-family:system-ui,sans-serif}
-    input,button{display:block;width:100%;padding:10px;margin:6px 0;box-sizing:border-box}
+    html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:#1b1b1b;color:#eee}
     #login{max-width:300px;margin:15% auto;padding:20px}
+    #login h2{display:flex;align-items:center;gap:8px;font-size:22px;margin:0 0 12px}
+    #login h2 img,#login h2 svg{width:28px;height:28px}
+    #login input,#login button{display:block;width:100%;padding:10px;margin:6px 0;box-sizing:border-box;
+        background:#2a2a2a;color:#eee;border:1px solid #555;border-radius:4px;font-size:14px}
+    #login button{background:#4a5a6a;border-color:#4a5a6a;cursor:pointer}
+    #login button:hover{background:#586b7d}
     iframe{position:fixed;inset:0;width:100%;height:100%;border:0}
     #menu{position:fixed;top:0;right:0;height:100%;width:340px;max-width:90vw;background:#1b1b1b;color:#eee;z-index:50;padding:16px;box-sizing:border-box;overflow:auto;transform:translateX(100%);transition:transform .2s ease;font-size:14px}
     #menu.open{transform:translateX(0)}
@@ -49,24 +55,29 @@
   window.addEventListener('pagehide', () => ping('/sleep/' + token));
   setInterval(() => { if (!document.hidden) ping('/alive/' + token); }, 30000);
 };
+  
 const showLogin = () => {
   document.body.innerHTML = `
     <div id="login">
-      <h2>Picard</h2>
-      <input id="u" placeholder="username" autocomplete="username">
-      <input id="p" type="password" placeholder="password" autocomplete="current-password">
-      <button id="b">Sign in</button>
+      <h2><img src="/picard.webp" alt="">Picard</h2>
+      <form id="lf">
+        <input id="u" placeholder="username" autocomplete="username">
+        <input id="p" type="password" placeholder="password" autocomplete="current-password">
+        <button type="submit">Sign in</button>
+      </form>
       <p id="e" style="color:red"></p>
     </div>`;
-  document.getElementById('b').onclick = async () => {
+  document.getElementById('lf').onsubmit = async (ev) => {
+    ev.preventDefault();
     const r = await fetch('/auth/login', {
       method: 'POST',
       headers: {'content-type': 'application/json'},
       body: JSON.stringify({username: document.getElementById('u').value,
                             password: document.getElementById('p').value})
     });
-    if (r.ok) location.reload();
-    else document.getElementById('e').textContent = 'Invalid credentials';
+    if (r.ok) { location.reload(); return; }
+    const j = await r.json().catch(() => ({}));
+    document.getElementById('e').textContent = j.error || ('Login failed (' + r.status + ')');
   };
 };
 
@@ -88,19 +99,23 @@ const mountMenu = (me) => {
     <aside id="menu">
       <div class="me"><b id="who"></b><small id="role"></small></div>
       <h3>Change password</h3>
-      <input id="cpw" type="password" placeholder="new password" autocomplete="new-password">
-      <button id="cpwBtn">Update password</button>
+      <form id="pwForm">
+        <input id="cpw" type="password" placeholder="new password" autocomplete="new-password">
+        <button type="submit">Update password</button>
+      </form>
       ${isAdmin ? `<h3>Users</h3>
-        <input id="nu" placeholder="username" autocomplete="off">
-        <input id="np" type="password" placeholder="password" autocomplete="new-password">
-        ${isSuper ? '<select id="nr"><option value="user">user</option><option value="admin">admin</option></select>' : ''}
-        <button id="createBtn">Add user</button>
+        <form id="nuForm">
+          <input id="nu" placeholder="username" autocomplete="off">
+          <input id="np" type="password" placeholder="password" autocomplete="new-password">
+          ${isSuper ? '<select id="nr"><option value="user">user</option><option value="admin">admin</option></select>' : ''}
+          <button type="submit">Add user</button>
+        </form>
         <div id="users"></div>` : ''}
       <h3>Session</h3>
-      <button id="logoutBtn" class="danger">Sign out</button>
+      <button id="logoutBtn" type="button" class="danger">Sign out</button>
       <p id="msg"></p>
     </aside>
-    <button id="menuHandle" title="Account"></button>`;
+    <button id="menuHandle" type="button" title="Account"></button>`;
 
   document.body.appendChild(w);
   $('who').textContent = me.username;
@@ -108,8 +123,9 @@ const mountMenu = (me) => {
 
   const say = (t, ok) => { const m = $('msg'); m.textContent = t; m.style.color = ok ? '#7bd88f' : '#ff6b6b'; };
   $('menuHandle').onclick = () => $('menu').classList.toggle('open');
-
-  $('cpwBtn').onclick = async () => {
+    
+  $('pwForm').onsubmit = async (ev) => {
+    ev.preventDefault();
     if (!$('cpw').value) return say('Enter a password', false);
     try { await api('POST', `/users/${encodeURIComponent(me.username)}/password`, {password: $('cpw').value});
           location.reload(); }
@@ -124,7 +140,7 @@ const mountMenu = (me) => {
   };
 
   if (!isAdmin) return;
-
+    
   const draw = async () => {
     let list;
     try { list = await api('GET', '/users'); } catch (e) { return say(e.message, false); }
@@ -134,10 +150,10 @@ const mountMenu = (me) => {
       const row = document.createElement('div');
       row.className = 'urow';
       row.innerHTML = `<b>${esc(u.username)}</b><small>${esc(u.role)}</small><div class="acts">
-        <button data-a="pw">reset</button>
-        <button data-a="kick">kick</button>
+        <button type="button" data-a="pw">reset</button>
+        <button type="button" data-a="kick">kick</button>
         ${isSuper && u.role !== 'superadmin' ? `<select data-a="role"><option value="user"${u.role==='user'?' selected':''}>user</option><option value="admin"${u.role==='admin'?' selected':''}>admin</option></select>` : ''}
-        ${u.username !== me.username && u.role !== 'superadmin' ? '<button data-a="del" class="danger">del</button>' : ''}</div>`;
+        ${u.username !== me.username && u.role !== 'superadmin' ? '<button type="button" data-a="del" class="danger">del</button>' : ''}</div>`;
       const q = (a) => row.querySelector(`[data-a=${a}]`);
       q('pw').onclick = async () => {
         const pw = prompt(`New password for ${u.username}`); if (!pw) return;
@@ -161,7 +177,8 @@ const mountMenu = (me) => {
     }
   };
 
-  $('createBtn').onclick = async () => {
+  $('nuForm').onsubmit = async (ev) => {
+    ev.preventDefault();
     const username = $('nu').value, password = $('np').value, role = isSuper ? $('nr').value : 'user';
     if (!username || !password) return say('username and password required', false);
     try { await api('POST', '/users', {username, password, role}); $('nu').value = $('np').value = ''; say('User added', true); draw(); }

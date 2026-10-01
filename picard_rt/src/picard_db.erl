@@ -20,12 +20,17 @@ query(Sql) ->
 
 query(Sql, Args) ->
   case is_owner() of
-    true -> errm_sqlite:query(db(), Sql, Args);
-    false -> gen_server:call({picard_db_owner, db_node()}, { query, Sql, Args}, 30000)
+    true -> safe(fun() -> errm_sqlite:query(db(), Sql, Args) end);
+    false -> safe(fun() -> gen_server:call({picard_db_owner, db_node()}, { query, Sql, Args}, 30000) end)
   end.
 
+safe(Fun) ->
+  try Fun() catch _:Reason ->
+    {error, {db_unavailable, Reason}} end.
+
 is_owner() ->
-  os:getenv("PICARD_DB_OWNER") =:= "1".
+  os:getenv("PICARD_DB_OWNER") =:= "1"
+  orelse os:getenv("PICARD_SEED_NODES") =:= false.
 
 db_node() ->
   case pg:get_members(picard_db) of

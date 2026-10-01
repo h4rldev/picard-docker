@@ -9,7 +9,7 @@ init([]) ->
   DbOwner = #{
     id => picard_db_owner,
     start => {picard_db_owner, start_link, []},
-    restart => permanent, shutdown => 5000,
+    restart => permanent, shutdown => 5000, 
     type => worker,
     modules => [picard_db_owner]
   },
@@ -30,5 +30,11 @@ init([]) ->
     modules => [picard_router]
   },
 
-  {ok, {#{strategy => one_for_one, intensity => 5, period => 10},
-        [DbOwner, Sessions, Router]}}.
+  {ok, {
+    #{
+      strategy => one_for_one,
+      intensity => 5,
+      period => 10
+    },
+    [DbOwner, Sessions, Router]
+  }}.

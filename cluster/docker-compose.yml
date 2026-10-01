@@ -10,7 +10,7 @@ services:
       - PICARD_SEED_NODES=picard@node1,picard@node2
       - PICARD_JWT_SECRET=${PICARD_JWT_SECRET}
       - PICARD_DB_OWNER=1
-    volumes: [node1-data:/data, storage:/storage]
+    volumes: [node1-data:/data, snapshot-data:/data/snapshots, storage:/storage]
     networks: [picard]
   node2:
     image: picard-node:test
@@ -22,7 +22,7 @@ services:
       - PICARD_COOKIE=${PICARD_COOKIE}
       - PICARD_SEED_NODES=picard@node1,picard@node2
       - PICARD_JWT_SECRET=${PICARD_JWT_SECRET}
-    volumes: [node2-data:/data, storage:/storage]
+    volumes: [node2-data:/data, snapshot-data:/data/snapshots, storage:/storage]
     networks: [picard]
-volumes: {node1-data: {}, node2-data: {}, storage: {}}
+volumes: {node1-data: {}, node2-data: {}, snapshot-data: {}, storage: {}}
 networks: {picard: {}}

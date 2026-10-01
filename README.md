@@ -9,9 +9,11 @@ across nodes.
 
 Each browser connection gets its own desktop by launching sway (headless) and
 Picard under a per-session OS user, then streaming the framebuffer with wayvnc
-over a WebSocket that noVNC renders in the page. Sessions are scoped to the
-account, not the container: a user can have one session at a time, frozen when
-they leave and resumed when they return, with their home directory preserved.
+over a WebSocket that noVNC renders in the page. When a connection goes away its
+session is frozen and written to a per-account snapshot, which the next
+connection for that account resumes.
+A second connection never attaches to a running session, so two people cannot
+steer one desktop.
 
 The image also bundles Helium (a Chromium build) as an in-session browser, foot
 as a terminal, and fuzzel as a launcher.
@@ -84,6 +86,10 @@ Nodes find each other through `PICARD_SEED_NODES`, a comma separated list of
 `picard@<hostname>`. Exactly one node sets `PICARD_DB_OWNER=1` and owns the
 SQLite file; every other node forwards queries to it over Erlang distribution.
 If the owner goes down, logins stop but running sessions keep running.
+
+If every node mounts the same host directory at `/data/snapshots`, a session
+that was on a node which dies is restored on a survivor the next time that
+account connects. Only the last clean freeze is kept.
 
 ## Verifying a session
 
