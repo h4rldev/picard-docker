@@ -28,7 +28,8 @@ sudo docker run -d --name picard-node -p 8080:8080 --stop-timeout 60 \
   -v picard-data:/data -v picard-storage:/storage ghcr.io/h4rldev/picard-docker:latest
 ```
 
-Then open <http://localhost:8080/>. Without a proxy the account is `generic`.
+Then open <http://localhost:8080/> and sign in. The first boot seeds a
+`superadmin` / `superadmin` account, so change that password straight away.
 
 The `--stop-timeout 60` gives the container time to snapshot every running
 session on shutdown. Docker's default of 10 seconds can kill a large home
