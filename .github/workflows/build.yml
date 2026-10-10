@@ -57,8 +57,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           secrets: gh_token=${{ secrets.GITHUB_TOKEN }}
           outputs: ${{ github.event_name != 'pull_request' && format('type=image,push-by-digest=true,name={0}', env.IMAGE) || '' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
 
       - name: export digest
         if: github.event_name != 'pull_request'
