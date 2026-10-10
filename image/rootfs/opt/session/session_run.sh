@@ -8,7 +8,9 @@ WAYVNC_PORT=$4
 PIDFILE=$5
 
 if ! id "$SESSION_USER" >/dev/null 2>&1; then
+  addgroup -g "${PICARD_STORAGE_GID:-1000}" picard 2>/dev/null || true
   adduser -D -H -s /bin/sh "$SESSION_USER"
+  addgroup "$SESSION_USER" picard 2>/dev/null || true
 fi
 
 rm -rf "$RTDIR"
@@ -17,6 +19,7 @@ chown -R "$SESSION_USER:$SESSION_USER" "$RTDIR" "$HOME_DIR"
 chmod 700 "$RTDIR"
 
 setsid su "$SESSION_USER" -s /bin/sh -c '
+  umask 002
   echo 1000 > /proc/self/oom_score_adj 2>/dev/null || true
 
   export XDG_RUNTIME_DIR="$1" HOME="$2"

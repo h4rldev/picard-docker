@@ -51,6 +51,10 @@ Environment variables:
 - `PICARD_CONFIG`: path to an optional JSON config file, default
   `/data/picard.config.json`. Environment variables win over the file, and the
   file wins over built-in defaults.
+- `PICARD_STORAGE_GID` Group ID that owns the `/storage` mount. Default is `1000`.
+- `PICARD_COOKIE`: Erlang distribution cookie. If unset, the container generates
+  one on first start and saves it to `/data/picard_erlang_cookie.txt`. All nodes
+  in a cluster must share the same value, so set it explicitly there.
 
 ### Authentication
 

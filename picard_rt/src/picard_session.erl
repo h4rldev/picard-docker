@@ -107,7 +107,10 @@ terminate(_Reason, _State) ->
   ok.
 
 prepare_dirs(User, RtDir, WorkDir, SnapDir) ->
+  Gid = os:getenv("PICARD_STORAGE_GID", "1000"),
+  os:cmd("addgroup -g " ++ Gid ++ " picard 2>/dev/null || true"),
   os:cmd("adduser -D -H -s /bin/sh " ++ User ++ " 2>/dev/null || true"),
+  os:cmd("addgroup " ++ User ++ " picard 2>/dev/null || true"),
   os:cmd("rm -rf " ++ WorkDir),
   ok = filelib:ensure_dir(filename:join(RtDir, "x")),
   ok = filelib:ensure_dir(filename:join(WorkDir, "x")),
@@ -119,7 +122,7 @@ prepare_dirs(User, RtDir, WorkDir, SnapDir) ->
 
 link_storage(User, WorkDir) ->
   Dir = storage_dir(),
-  os:cmd("mkdir -p " ++ Dir ++ " && chmod 1777 " ++ Dir ++ " && chown root:root " ++ Dir),
+  os:cmd("mkdir -p " ++ Dir ++ " && chmod 2770 " ++ Dir ++ " && chgrp picard " ++ Dir),
   os:cmd("ln -sfn " ++ Dir ++ " " ++ filename:join(WorkDir, "storage")),
   os:cmd("chown -h " ++ User ++ ":" ++ User ++ " " ++ filename:join(WorkDir, "storage")),
   ok.

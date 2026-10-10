@@ -44,8 +44,6 @@ RUN apk add --no-cache \
     patch \
     && setcap -r /usr/bin/sway
 
-RUN adduser -D -u 1000 -s /bin/sh app
-
 RUN --mount=type=secret,id=gh_token,env=GITHUB_TOKEN set -eu; \
     case "$TARGETARCH" in arm64) A=aarch64 ;; *) A=x86_64 ;; esac; \
     URL=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN:-}" https://api.github.com/repos/pkgforge-dev/Helium-Browser-AppImage-Enhanced/releases/latest | jq -r --arg a "$A" '.assets[] | select(.name | endswith(".AppImage") and contains($a)) | .browser_download_url' | head -n1); \

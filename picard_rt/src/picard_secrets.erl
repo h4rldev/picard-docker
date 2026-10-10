@@ -4,23 +4,23 @@
 init() ->
   case picard_config:get_str("jwt_secret", undefined) of
     undefined ->
-      ensure_secret_file(),
-      logger:error("PICARD_JWT_SECRET is not set - copy it from /data/picard_jwt_secret.txt into your environment and restart"),
-      halt(1);
+      persistent_term:put(?MODULE, persisted_or_new_secret()), ok;
     Secret ->
-      SecretBin = base64:decode(list_to_binary(Secret), #{mode => 'urlsafe', padding => false}),
-      persistent_term:put(?MODULE, SecretBin),
-      ok
+      persistent_term:put(?MODULE, base64:decode(list_to_binary(Secret), #{mode => 'urlsafe', padding => false})), ok
   end.
 
-ensure_secret_file() ->
+persisted_or_new_secret() ->
   File = "/data/picard_jwt_secret.txt",
-  case filelib:is_file(File) of
-    true -> ok;   %% value already persisted; keep it stable across boots
-    false ->
+  case file:read_file(File) of
+    {ok, Bin} ->
+      [_, Rest] = binary:split(Bin, <<"PICARD_JWT_SECRET=">>),
+      [Val | _] = binary:split(Rest, <<"\n">>),
+      base64:decode(Val, #{mode => 'urlsafe', padding => false});
+    _ ->
       Gen = base64:encode(crypto:strong_rand_bytes(32), #{mode => 'urlsafe', padding => false}),
       _ = file:write_file(File, <<"# Put this where you store your other environment vars for the container\nPICARD_JWT_SECRET=", Gen/binary, "\n">>),
-      ok
+      logger:warning("PICARD_JWT_SECRET unset; generated and saved to ~s", [File]),
+      base64:decode(Gen, #{mode => 'urlsafe', padding => false})
   end.
 
 get() ->
