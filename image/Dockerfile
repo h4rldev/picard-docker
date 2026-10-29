@@ -30,18 +30,15 @@ RUN apk add --no-cache \
     grim \
     foot \
     fuzzel \
-    font-noto \
+    font-dejavu \
     xdg-utils \
-    curl \
-    jq \
-    libcap \
     swaybg \
     erlang28 \
     file \
     ca-certificates \
     sqlite-libs \
     argon2-libs \
-    patch \
+    && apk add --no-cache --virtual .build-deps curl jq patch libcap \
     && setcap -r /usr/bin/sway
 
 RUN --mount=type=secret,id=gh_token,env=GITHUB_TOKEN set -eu; \
@@ -88,6 +85,8 @@ RUN set -eu; \
     sed -i '/encs.push(encodings.pseudoEncodingQEMUExtendedKeyEvent);/d' /opt/web/novnc/core/rfb.js; \
     patch -p1 -d /opt/web/novnc < /tmp/novnc-dead-keys.patch
 
+RUN apk del .build-deps
+
 COPY --from=build /build/picard_rt_app /opt/picard_rt/picard_rt
 COPY --from=build /build/picard_rt/_build/default/lib/errm_http /opt/picard_rt/errm_http
 COPY --from=build /build/picard_rt/_build/default/lib/errm_ws /opt/picard_rt/errm_ws
@@ -96,6 +95,10 @@ COPY --from=build /build/picard_rt/_build/default/lib/errm_argon /opt/picard_rt/
 COPY --from=build /build/picard_rt/_build/default/lib/errm_jwt /opt/picard_rt/errm_jwt
 COPY --from=build /build/picard_rt/_build/default/lib/errm_json /opt/picard_rt/errm_json
 COPY --from=build /build/picard_rt/_build/default/lib/errm_uuid /opt/picard_rt/errm_uuid
+
+RUN cd /opt/picard_rt && for d in errm_*; do \
+      find "$d" -mindepth 1 -maxdepth 1 -not -name ebin -not -name priv -exec rm -rf {} +; \
+    done
 
 RUN mkdir -p /data/snapshots /data/work /run/picard /storage
 

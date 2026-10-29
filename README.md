@@ -59,7 +59,8 @@ Environment variables:
   superadmin on boot. If neither is set and no superadmin exists, the app seeds
   `superadmin` / `superadmin` and logs a warning.
 - `PICARD_STORAGE_DIR`: shared directory mounted at `/storage` by default.
-- `PICARD_STORAGE_GID`: group ID that owns the `/storage` mount, default `1000`.
+- `PICARD_STORAGE_GID`: group ID that owns the `/storage` mount, defaults to the
+  group already on PICARD_STORAGE_DIR; set it only to override.
   Set it to match the group that owns your media so sessions can save tags.
 - `PICARD_CONFIG`: path to an optional JSON config file, default
   `/data/picard.config.json`. Environment variables win over the file, and the
@@ -140,6 +141,11 @@ Sessions do not share a user, so read and write access goes through a group
 instead: every session joins the `picard` group (`PICARD_STORAGE_GID`), and on
 start the whole tree is made group-writable with setgid directories. Existing
 media owned by that group becomes editable, and new files inherit the group.
+
+If you migrated from the mikenye image, the old `chown -R 1000:1002` is no
+longer needed. Set `PICARD_STORAGE_GID` to the group that should own the tree
+(the startup pass re-applies it on every boot), and leave the files alone —
+the container manages the group itself.
 
 ## License
 

@@ -4,6 +4,7 @@ set $mod Mod4
 
 bindsym $mod+d exec fuzzel
 bindsym $mod+Return exec foot
+bindsym $mod+w kill
 
 default_border none
 default_floating_border none

@@ -13,7 +13,11 @@ fi
 export PICARD_COOKIE
 
 STORAGE="${PICARD_STORAGE_DIR:-/storage}"
-PGID="${PICARD_STORAGE_GID:-1000}"
+PGID="${PICARD_STORAGE_GID:-}"
+if [ -z "$PGID" ]; then
+  PGID=$(stat -c %g "$STORAGE" 2>/dev/null || true)
+  case "$PGID" in ''|0) PGID=1000 ;; esac
+fi
 addgroup -g "$PGID" picard 2>/dev/null || true
 if [ -d "$STORAGE" ]; then
   chgrp -R picard "$STORAGE" 2>/dev/null || true
